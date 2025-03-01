@@ -1,5 +1,6 @@
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use futures::{executor::LocalPool, task::LocalSpawn};
 use ratatui::{
     style::Stylize,
     text::Line,
@@ -12,21 +13,32 @@ pub struct App {
     running: bool,
     node: r2r::Node,
     publisher: r2r::Publisher<r2r::std_msgs::msg::String>,
+    available_topics: Vec<String>,
+    pool: LocalPool,
 }
 
 impl App {
     /// Construct a new instance of [`App`].
     pub fn new() -> Self {
         let ctx = r2r::Context::create().unwrap();
-        let mut node = r2r::Node::create(ctx, "lazyros", "").unwrap();
+        let mut node = r2r::Node::create(ctx.clone(), "lazyros", "").unwrap();
         let publisher = node
             .create_publisher::<r2r::std_msgs::msg::String>("/topic", r2r::QosProfile::default())
             .unwrap();
+
+        let pool = LocalPool::new();
+        //let spawner = pool.spawner();
+
+        //spawner.spawn_local_obj(async move {
+        //    //available_topics = node.get_topic_names_and_types();
+        //})?;
 
         Self {
             running: false,
             node,
             publisher,
+            available_topics: vec![],
+            pool,
         }
     }
 
@@ -36,6 +48,16 @@ impl App {
         while self.running {
             terminal.draw(|frame| self.draw(frame))?;
             self.handle_crossterm_events()?;
+            // Check for new nodes
+            self.node.spin_once(std::time::Duration::from_millis(100));
+            self.pool.run_until_stalled();
+
+            let _map = self.node.get_topic_names_and_types().unwrap();
+            for (topic, _) in _map {
+                if !self.available_topics.contains(&topic) {
+                    self.available_topics.push(topic);
+                }
+            }
         }
         Ok(())
     }
@@ -49,7 +71,11 @@ impl App {
         let title = Line::from("lazyros").bold().blue().centered();
         let text = "Welcome to lazyros!\n\n\
             Press `P` to publish 'Hello world!' to the topic /topic.\n\
-            Press `Esc`, `Ctrl-C` or `q` to stop running.";
+            Press `Esc`, `Ctrl-C` or `q` to stop running. \n\
+            Current available topics:\n"
+            .to_owned()
+            + &self.available_topics.join("\n");
+
         frame.render_widget(
             Paragraph::new(text)
                 .block(Block::bordered().title(title))
