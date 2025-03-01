@@ -51,10 +51,19 @@ RUN apt-get update && \
     python3-setuptools \
     python3-vcstool \
     python3-colcon-common-extensions \
-    cmake \
     libpoco-dev \
     libeigen3-dev \
-    dpkg
+    dpkg \
+    cargo \
+    rustc \
+    clang \
+    clang-tools \
+    lldb \
+    lld \
+    gcc-multilib \
+    g++-multilib \
+    libclang-dev
+
 
 
 # Symlink python3 to python

@@ -1,0 +1,16 @@
+[package]
+name = "lazyros"
+version = "0.1.0"
+authors = ["Daniel San José Pro <42489409+danielsanjosepro@users.noreply.github.com>"]
+license = "MIT"
+edition = "2021"
+
+[dependencies]
+crossterm = "0.28.1"
+ratatui = "0.29.0"
+color-eyre = "0.6.3"
+r2r = "0.9.4"
+futures = "0.3.31"
+
+[env]
+IDL_PACKAGE_FILTER = { value = "std_msgs;r2r_minimal_node_msgs" }

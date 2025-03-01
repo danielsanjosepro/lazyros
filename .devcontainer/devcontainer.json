@@ -1,10 +1,10 @@
 {
-    "name": "ROS 2 - Project",
+    "name": "Lazyros Devcontainer",
     "privileged": true,
     "remoteUser": "ros",
     "dockerComposeFile": "../docker-compose.yaml",
-    "workspaceFolder": "/home/ros/ros2_ws/src/ros2_docker_template",
-    "service": "ros2_docker_template",
+    "workspaceFolder": "/home/ros/ros2_ws/src/lazyros",
+    "service": "lazyros",
     "features": {
         "ghcr.io/duduribeiro/devcontainer-features/neovim:1": {
             "version": "stable"
@@ -17,8 +17,8 @@
         }
     },
     "mounts": [
-        "source=${localWorkspaceFolder},target=/home/ros/ros2_ws/src/ros2_docker_template,type=bind,consistency=cached",
+        "source=${localWorkspaceFolder},target=/home/ros/ros2_ws/src/lazyros,type=bind,consistency=cached",
         "source=${localEnv:HOME}/.env,target=/home/ros/.env,type=bind,consistency=cached"
     ],
-    "postStartCommand": "/bin/bash /home/ros/ros2_ws/src/ros2_docker_template/.devcontainer/post_create.sh"
+    "postStartCommand": "/bin/bash /home/ros/ros2_ws/src/lazyros/.devcontainer/post_create.sh"
 }
