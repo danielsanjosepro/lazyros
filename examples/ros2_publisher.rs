@@ -4,20 +4,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let publisher =
         node.create_publisher::<r2r::std_msgs::msg::String>("/topic", r2r::QosProfile::default())?;
 
-    println!("Publishing to /topic in 5 seconds.");
+    println!("Publishing to /topic");
 
-    std::thread::sleep(std::time::Duration::from_millis(5000));
+    loop {
+        let string_msg = r2r::std_msgs::msg::String {
+            data: "Hello world!".to_string(),
+            ..Default::default()
+        };
 
-    let string_msg = r2r::std_msgs::msg::String {
-        data: "Hello world!".to_string(),
-        ..Default::default()
-    };
+        publisher.publish(&string_msg).unwrap();
 
-    publisher.publish(&string_msg).unwrap();
-
-    node.destroy_publisher(publisher);
-
-    println!("Published a message!");
-
-    Ok(())
+        println!("Published a message.");
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+    }
 }

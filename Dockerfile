@@ -54,8 +54,6 @@ RUN apt-get update && \
     libpoco-dev \
     libeigen3-dev \
     dpkg \
-    cargo \
-    rustc \
     clang \
     clang-tools \
     lldb \
@@ -64,6 +62,8 @@ RUN apt-get update && \
     g++-multilib \
     libclang-dev
 
+# Install rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 
 # Symlink python3 to python

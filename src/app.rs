@@ -1,125 +1,172 @@
-use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use futures::{executor::LocalPool, task::LocalSpawn};
+use std::{io, sync::mpsc};
+
+use crate::event::Event;
+
 use ratatui::{
-    style::Stylize,
+    layout::{Constraint, Layout},
+    prelude::{Buffer, Rect},
+    style::{Color, Style, Stylize},
+    symbols::border,
     text::Line,
-    widgets::{Block, Paragraph},
+    widgets::{Block, List, ListItem, Paragraph, Widget},
     DefaultTerminal, Frame,
 };
 
-#[derive()]
+enum Movement {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
 pub struct App {
-    running: bool,
-    node: r2r::Node,
-    publisher: r2r::Publisher<r2r::std_msgs::msg::String>,
-    available_topics: Vec<String>,
-    pool: LocalPool,
+    exit: bool,
+    topics: Vec<String>,
+    nodes: Vec<String>,
+    active_window: String,
+    details: String,
 }
 
 impl App {
-    /// Construct a new instance of [`App`].
-    pub fn new() -> Self {
-        let ctx = r2r::Context::create().unwrap();
-        let mut node = r2r::Node::create(ctx.clone(), "lazyros", "").unwrap();
-        let publisher = node
-            .create_publisher::<r2r::std_msgs::msg::String>("/topic", r2r::QosProfile::default())
-            .unwrap();
-
-        let pool = LocalPool::new();
-        //let spawner = pool.spawner();
-
-        //spawner.spawn_local_obj(async move {
-        //    //available_topics = node.get_topic_names_and_types();
-        //})?;
-
-        Self {
-            running: false,
-            node,
-            publisher,
-            available_topics: vec![],
-            pool,
+    pub fn new() -> App {
+        App {
+            exit: false,
+            topics: vec!["/topic1".to_string(), "/topic2".to_string()],
+            nodes: vec!["/node1".to_string(), "/node2".to_string()],
+            active_window: "nodes".to_string(),
+            details: "".to_string(),
         }
     }
 
-    /// Run the application's main loop.
-    pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        self.running = true;
-        while self.running {
+    /// Main task to be run continuously
+    pub fn run(
+        &mut self,
+        terminal: &mut DefaultTerminal,
+        rx: mpsc::Receiver<Event>,
+    ) -> io::Result<()> {
+        while !self.exit {
+            match rx.recv().unwrap() {
+                Event::Input(key_event) => self.handle_key_event(key_event)?,
+                Event::Resize(_, _) => terminal.clear()?,
+                // TODO: handle resize, for now only
+                // render the terminal again
+                Event::ROSEvent(ros_event) => self.handle_ros_events(ros_event)?,
+            }
             terminal.draw(|frame| self.draw(frame))?;
-            self.handle_crossterm_events()?;
-            // Check for new nodes
-            self.node.spin_once(std::time::Duration::from_millis(100));
-            self.pool.run_until_stalled();
+        }
+        Ok(())
+    }
 
-            let _map = self.node.get_topic_names_and_types().unwrap();
-            for (topic, _) in _map {
-                if !self.available_topics.contains(&topic) {
-                    self.available_topics.push(topic);
+    /// Render `self`, as we implemented the Widget trait for &App
+    fn draw(&self, frame: &mut Frame) {
+        frame.render_widget(self, frame.area());
+    }
+
+    fn handle_ros_events(&mut self, ros_event: String) -> io::Result<()> {
+        self.details += "\n";
+        self.details += &ros_event;
+        return Ok(());
+    }
+
+    fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) -> io::Result<()> {
+        use crossterm::event::{KeyCode, KeyEventKind};
+
+        if key_event.kind != KeyEventKind::Press {
+            return Ok(());
+        }
+
+        match key_event.code {
+            KeyCode::Char('q') => self.exit = true,
+            KeyCode::Char('n') => self.active_window = "nodes".to_string(),
+            KeyCode::Char('t') => self.active_window = "topics".to_string(),
+
+            KeyCode::Up | KeyCode::Char('k') => self.handle_arrow(Movement::Up)?,
+            KeyCode::Down | KeyCode::Char('j') => self.handle_arrow(Movement::Down)?,
+            KeyCode::Left | KeyCode::Char('h') => self.handle_arrow(Movement::Left)?,
+            KeyCode::Right | KeyCode::Char('l') => self.handle_arrow(Movement::Right)?,
+
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    fn handle_arrow(&mut self, movement: Movement) -> io::Result<()> {
+        match movement {
+            Movement::Up => {
+                if self.active_window == "topics" {
+                    self.active_window = "nodes".to_string();
                 }
             }
+            Movement::Down => {
+                if self.active_window == "nodes" {
+                    self.active_window = "topics".to_string();
+                }
+            }
+            Movement::Right => self.active_window = "details".to_string(),
+            Movement::Left => self.active_window = "nodes".to_string(),
         }
         Ok(())
     }
+}
 
-    /// Renders the user interface.
-    ///
-    /// This is where you add new widgets. See the following resources for more information:
-    /// - <https://docs.rs/ratatui/latest/ratatui/widgets/index.html>
-    /// - <https://github.com/ratatui/ratatui/tree/master/examples>
-    fn draw(&mut self, frame: &mut Frame) {
-        let title = Line::from("lazyros").bold().blue().centered();
-        let text = "Welcome to lazyros!\n\n\
-            Press `P` to publish 'Hello world!' to the topic /topic.\n\
-            Press `Esc`, `Ctrl-C` or `q` to stop running. \n\
-            Current available topics:\n"
-            .to_owned()
-            + &self.available_topics.join("\n");
+impl Widget for &App {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let main_layout = Layout::vertical([Constraint::Percentage(100), Constraint::Min(1)]);
+        let [main_area, instructions_area] = main_layout.areas(area);
+        let left_right_layout =
+            Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)]);
+        let [options_area, details_area] = left_right_layout.areas(main_area);
+        let options_layout =
+            Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]);
+        let [nodes_area, topics_area] = options_layout.areas(options_area);
 
-        frame.render_widget(
-            Paragraph::new(text)
-                .block(Block::bordered().title(title))
-                .centered(),
-            frame.area(),
-        )
-    }
+        let nodes_border = Block::bordered()
+            .title(Line::from(" Nodes "))
+            .border_set(border::ROUNDED)
+            .style(if self.active_window == "nodes" {
+                Color::Blue
+            } else {
+                Color::White
+            });
 
-    /// Reads the crossterm events and updates the state of [`App`].
-    ///
-    /// If your application needs to perform work in between handling events, you can use the
-    /// [`event::poll`] function to check if there are any events available with a timeout.
-    fn handle_crossterm_events(&mut self) -> Result<()> {
-        match event::read()? {
-            // it's important to check KeyEventKind::Press to avoid handling key release events
-            Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key_event(key),
-            Event::Mouse(_) => {}
-            Event::Resize(_, _) => {}
-            _ => {}
-        }
-        Ok(())
-    }
+        List::new(self.nodes.iter().map(|node| {
+            ListItem::new(Line::from(node.clone()).style(Style::default().fg(Color::White)))
+        }))
+        .block(nodes_border)
+        .render(nodes_area, buf);
 
-    /// Handles the key events and updates the state of [`App`].
-    fn on_key_event(&mut self, key: KeyEvent) {
-        match (key.modifiers, key.code) {
-            (_, KeyCode::Esc | KeyCode::Char('q'))
-            | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
-            (_, KeyCode::Char('P')) => self.publish(),
-            _ => {}
-        }
-    }
+        let topics_border = Block::bordered()
+            .title(Line::from(" Topics "))
+            .border_set(border::ROUNDED)
+            .style(if self.active_window == "topics" {
+                Color::Blue
+            } else {
+                Color::White
+            });
 
-    fn publish(&mut self) {
-        let string_msg = r2r::std_msgs::msg::String {
-            data: "Hello world!".to_string(),
-            ..Default::default()
-        };
-        self.publisher.publish(&string_msg).unwrap();
-    }
+        List::new(self.topics.iter().map(|topic| {
+            ListItem::new(Line::from(topic.clone()).style(Style::default().fg(Color::White)))
+        }))
+        .block(topics_border)
+        .render(topics_area, buf);
 
-    /// Set running to false to quit the application.
-    fn quit(&mut self) {
-        self.node.destroy_publisher(self.publisher.clone());
-        self.running = false;
+        let details_block = Block::bordered()
+            .title(Line::from(" Details - TODO "))
+            .border_set(border::ROUNDED)
+            .style(if self.active_window == "details" {
+                Color::Blue
+            } else {
+                Color::White
+            });
+
+        Paragraph::new(self.details.clone())
+            .block(details_block)
+            .render(details_area, buf);
+
+        Line::from(vec![" Quit ".into(), "<q>".blue().bold()])
+            .centered()
+            .bold()
+            .render(instructions_area, buf);
     }
 }
