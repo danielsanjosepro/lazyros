@@ -28,7 +28,6 @@ fn main() -> io::Result<()> {
     app_result
 }
 
-/// Block, waiting for input events from the user.
 fn handle_input_events(tx: mpsc::Sender<event::Event>) {
     loop {
         match crossterm::event::read().unwrap() {
@@ -43,7 +42,6 @@ fn handle_input_events(tx: mpsc::Sender<event::Event>) {
     }
 }
 
-///
 fn run_ros_thread(tx: mpsc::Sender<event::Event>) -> Result<(), Box<dyn std::error::Error>> {
     let ctx = r2r::Context::create()?;
     let mut node = r2r::Node::create(ctx, "lazyros", "")?;
